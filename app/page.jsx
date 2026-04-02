@@ -200,7 +200,7 @@ function SyncBadge({ status, binId, onImport }) {
           {binId && (
             <div style={{ marginBottom: "12px" }}>
               <div style={{ fontSize: "11px", color: "#6b6b70", marginBottom: "6px" }}>
-                מזהה הסנכרון שלך (שתף עם מכשיר אחר):
+                שתף קישור זה עם מכשיר אחר:
               </div>
               <div
                 style={{
@@ -213,13 +213,18 @@ function SyncBadge({ status, binId, onImport }) {
                   wordBreak: "break-all",
                   cursor: "pointer",
                 }}
-                onClick={() => navigator.clipboard?.writeText(binId)}
+                onClick={() => {
+                  const url = `${window.location.origin}${window.location.pathname}?sync=${binId}`;
+                  navigator.clipboard?.writeText(url);
+                }}
                 title="לחץ להעתקה"
               >
-                {binId}
+                {typeof window !== "undefined"
+                  ? `${window.location.origin}${window.location.pathname}?sync=${binId}`
+                  : `?sync=${binId}`}
               </div>
               <div style={{ fontSize: "10px", color: "#6b6b70", marginTop: "4px" }}>
-                לחץ להעתקה
+                לחץ להעתקת הקישור
               </div>
             </div>
           )}
@@ -294,11 +299,15 @@ export default function Home() {
   // Load from localStorage + cloud on mount
   useEffect(() => {
     async function init() {
-      const savedSyncId = localStorage.getItem("trip_sync_id");
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlSyncId = urlParams.get("sync");
+      const savedSyncId = urlSyncId || localStorage.getItem("trip_sync_id");
       const localExpenses = localStorage.getItem("trip_expenses");
 
       if (savedSyncId) {
         setSyncId(savedSyncId);
+        localStorage.setItem("trip_sync_id", savedSyncId);
+        window.history.replaceState({}, "", `?sync=${savedSyncId}`);
         setSyncStatus("loading");
         try {
           const res = await fetch(`/api/sync?syncId=${savedSyncId}`);
@@ -350,6 +359,7 @@ export default function Home() {
           if (data.syncId && data.syncId !== currentSyncId) {
             setSyncId(data.syncId);
             localStorage.setItem("trip_sync_id", data.syncId);
+            window.history.replaceState({}, "", `?sync=${data.syncId}`);
           }
           setSyncStatus("saved");
           setTimeout(() => setSyncStatus("idle"), 2000);
