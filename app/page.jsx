@@ -55,6 +55,7 @@ function QuickCategory({ cat, selected, onSelect }) {
 
 function ExpenseRow({ expense, rate, onDelete, onEdit }) {
   const cat = CATEGORIES.find((c) => c.id === expense.category) || CATEGORIES[CATEGORIES.length - 1];
+  const payBack = expense.paidByOther ? (expense.myShare ?? expense.amount) : null;
   return (
     <div
       style={{
@@ -63,6 +64,7 @@ function ExpenseRow({ expense, rate, onDelete, onEdit }) {
         gap: "12px",
         padding: "14px 16px",
         borderBottom: "1px solid rgba(255,255,255,0.06)",
+        background: expense.paidByOther ? "rgba(100,160,255,0.04)" : "transparent",
       }}
     >
       <div
@@ -70,7 +72,7 @@ function ExpenseRow({ expense, rate, onDelete, onEdit }) {
           width: "40px",
           height: "40px",
           borderRadius: "10px",
-          background: "rgba(255,255,255,0.06)",
+          background: expense.paidByOther ? "rgba(100,160,255,0.12)" : "rgba(255,255,255,0.06)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -92,12 +94,17 @@ function ExpenseRow({ expense, rate, onDelete, onEdit }) {
         >
           {expense.description || cat.label}
         </div>
-        <div style={{ fontSize: "12px", color: "#6b6b70", marginTop: "2px" }}>
+        <div style={{ fontSize: "12px", color: "#6b6b70", marginTop: "2px", display: "flex", gap: "6px", alignItems: "center" }}>
           {formatDate(expense.date)}
+          {expense.paidByOther && (
+            <span style={{ color: "#64a0ff", fontFamily: "'DM Mono', monospace" }}>
+              ↩ להחזיר {expense.paidByName ? `ל${expense.paidByName} ` : ""} €{payBack.toFixed(2)} 
+            </span>
+          )}
         </div>
       </div>
       <div style={{ textAlign: "right", flexShrink: 0 }}>
-        <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 500, fontSize: "15px", color: "#f0f0f0" }}>
+        <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 500, fontSize: "15px", color: expense.paidByOther ? "#8a8a8e" : "#f0f0f0" }}>
           €{expense.amount.toFixed(2)}
         </div>
         <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "12px", color: "#6b6b70" }}>
@@ -289,6 +296,9 @@ export default function Home() {
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [rate, setRate] = useState(FALLBACK_RATE);
   const [rateLoading, setRateLoading] = useState(true);
+  const [paidByOther, setPaidByOther] = useState(false);
+  const [paidByName, setPaidByName] = useState("");
+  const [myShare, setMyShare] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [syncId, setSyncId] = useState(null);
@@ -414,17 +424,21 @@ export default function Home() {
     setDescription(expense.description);
     setCategory(expense.category);
     setDate(expense.date);
+    setPaidByOther(expense.paidByOther || false);
+    setPaidByName(expense.paidByName || "");
+    setMyShare(expense.myShare != null ? expense.myShare.toString() : "");
     setShowForm(true);
   }, []);
 
   const addExpense = useCallback(() => {
     const numAmount = parseFloat(amount);
     if (!numAmount || numAmount <= 0) return;
+    const numMyShare = paidByOther && myShare !== "" ? parseFloat(myShare) : null;
     if (editingId) {
       setExpenses((prev) =>
         prev.map((e) =>
           e.id === editingId
-            ? { ...e, amount: numAmount, description: description.trim(), category, date }
+            ? { ...e, amount: numAmount, description: description.trim(), category, date, paidByOther, paidByName: paidByOther ? paidByName.trim() : "", myShare: numMyShare }
             : e
         )
       );
@@ -436,14 +450,20 @@ export default function Home() {
         description: description.trim(),
         category,
         date,
+        paidByOther,
+        paidByName: paidByOther ? paidByName.trim() : "",
+        myShare: numMyShare,
       };
       setExpenses((prev) => [newExpense, ...prev]);
     }
     setAmount("");
     setDescription("");
     setCategory("other");
+    setPaidByOther(false);
+    setPaidByName("");
+    setMyShare("");
     setShowForm(false);
-  }, [amount, description, category, date, editingId]);
+  }, [amount, description, category, date, editingId, paidByOther, myShare]);
 
   const deleteExpense = useCallback((id) => {
     setExpenses((prev) => prev.filter((e) => e.id !== id));
@@ -468,6 +488,9 @@ export default function Home() {
 
   const totalEur = expenses.reduce((sum, e) => sum + e.amount, 0);
   const totalIls = totalEur * rate;
+  const payBackEur = expenses
+    .filter((e) => e.paidByOther)
+    .reduce((sum, e) => sum + (e.myShare ?? e.amount), 0);
 
   return (
     <>
@@ -544,7 +567,7 @@ export default function Home() {
           </div>
 
           {/* Totals */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: payBackEur > 0 ? "1fr 1fr 1fr" : "1fr 1fr", gap: "12px" }}>
             <div
               style={{
                 background: "rgba(232,197,71,0.08)",
@@ -556,7 +579,7 @@ export default function Home() {
               <div style={{ fontSize: "11px", color: "#8a8a8e", marginBottom: "4px", letterSpacing: "0.5px" }}>
                 TOTAL EUR
               </div>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 500, fontSize: "24px", color: "#e8c547" }}>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 500, fontSize: payBackEur > 0 ? "18px" : "24px", color: "#e8c547" }}>
                 €{totalEur.toFixed(2)}
               </div>
             </div>
@@ -571,10 +594,27 @@ export default function Home() {
               <div style={{ fontSize: "11px", color: "#8a8a8e", marginBottom: "4px", letterSpacing: "0.5px" }}>
                 TOTAL ILS
               </div>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 500, fontSize: "24px", color: "#f0f0f0" }}>
-                ₪{totalIls.toFixed(2)}
+              <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 500, fontSize: payBackEur > 0 ? "18px" : "24px", color: "#f0f0f0" }}>
+                ₪{totalIls.toFixed(0)}
               </div>
             </div>
+            {payBackEur > 0 && (
+              <div
+                style={{
+                  background: "rgba(100,160,255,0.08)",
+                  border: "1px solid rgba(100,160,255,0.2)",
+                  borderRadius: "14px",
+                  padding: "16px",
+                }}
+              >
+                <div style={{ fontSize: "11px", color: "#8a8a8e", marginBottom: "4px", letterSpacing: "0.5px" }}>
+                  להחזיר
+                </div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 500, fontSize: "18px", color: "#64a0ff" }}>
+                  €{payBackEur.toFixed(2)}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -700,10 +740,92 @@ export default function Home() {
               </div>
             )}
 
+            {/* Paid by other */}
+            <div style={{ marginBottom: "16px" }}>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => { setPaidByOther((v) => !v); setMyShare(""); setPaidByName(""); }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    background: paidByOther ? "rgba(100,160,255,0.12)" : "rgba(255,255,255,0.04)",
+                    border: paidByOther ? "1px solid rgba(100,160,255,0.3)" : "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: "10px",
+                    color: paidByOther ? "#64a0ff" : "#8a8a8e",
+                    fontFamily: "'Rubik', sans-serif",
+                    fontSize: "14px",
+                    fontWeight: paidByOther ? 600 : 400,
+                    cursor: "pointer",
+                    padding: "10px 14px",
+                    flex: 1,
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <span style={{ fontSize: "16px" }}>↩</span>
+                  מישהו אחר שילם
+                  <span style={{ marginRight: "auto", fontSize: "16px" }}>{paidByOther ? "✓" : ""}</span>
+                </button>
+                {paidByOther && (
+                  <input
+                    type="text"
+                    placeholder="שם..."
+                    value={paidByName}
+                    onChange={(e) => setPaidByName(e.target.value)}
+                    style={{
+                      width: "110px",
+                      padding: "10px 12px",
+                      borderRadius: "10px",
+                      border: "1px solid rgba(100,160,255,0.25)",
+                      background: "rgba(0,0,0,0.3)",
+                      color: "#f0f0f0",
+                      fontFamily: "'Rubik', sans-serif",
+                      fontSize: "14px",
+                      outline: "none",
+                      direction: "rtl",
+                    }}
+                  />
+                )}
+              </div>
+
+              {paidByOther && (
+                <div style={{ marginTop: "10px", display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "13px", color: "#8a8a8e", fontFamily: "'Rubik', sans-serif", whiteSpace: "nowrap" }}>
+                    כמה להחזיר?
+                  </span>
+                  <div style={{ position: "relative", flex: 1 }}>
+                    <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#64a0ff", fontFamily: "'DM Mono', monospace", fontSize: "15px" }}>€</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      placeholder={amount || "0.00"}
+                      value={myShare}
+                      onChange={(e) => setMyShare(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px 10px 28px",
+                        borderRadius: "10px",
+                        border: "1px solid rgba(100,160,255,0.25)",
+                        background: "rgba(0,0,0,0.3)",
+                        color: "#f0f0f0",
+                        fontFamily: "'DM Mono', monospace",
+                        fontSize: "15px",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                  <span style={{ fontSize: "12px", color: "#6b6b70", fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>
+                    {myShare === "" && amount ? `= €${parseFloat(amount || 0).toFixed(2)}` : myShare ? `₪${(parseFloat(myShare) * rate).toFixed(0)}` : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+
             {/* Buttons */}
             <div style={{ display: "flex", gap: "10px" }}>
               <button
-                onClick={() => { setShowForm(false); setEditingId(null); setAmount(""); setDescription(""); setCategory("other"); }}
+                onClick={() => { setShowForm(false); setEditingId(null); setAmount(""); setDescription(""); setCategory("other"); setPaidByOther(false); setPaidByName(""); setMyShare(""); }}
                 style={{
                   flex: 1,
                   padding: "14px",
